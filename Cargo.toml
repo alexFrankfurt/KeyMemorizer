@@ -1,0 +1,9 @@
+[package]
+name = "key_memorizer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rdev = "0.5.3"
+regex = "1"
+winapi = { version = "0.3", features = ["winuser", "processthreadsapi"] }
