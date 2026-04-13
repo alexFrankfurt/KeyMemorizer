@@ -7,3 +7,8 @@ edition = "2021"
 rdev = "0.5.3"
 regex = "1"
 winapi = { version = "0.3", features = ["winuser", "processthreadsapi"] }
+
+[[bin]]
+name = "key_memorizer"
+path = "src/main.rs"
+
