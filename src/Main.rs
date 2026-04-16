@@ -1,7 +1,7 @@
 use rdev::{Event, EventType, Key};
 use std::env;
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
@@ -201,6 +201,26 @@ fn maybe_log_foreground_change(hwnd: usize, hkl: HKL, title: &str, class_name: &
     }
 }
 
+fn initialize_layout_state() {
+    let (hkl, hwnd, title, class_name) = unsafe { get_foreground_context() };
+    let lang_id = LOWORD(hkl as usize as DWORD) as u16;
+
+    set_expected_lang(lang_id);
+    update_last_cyrillic_hkl(hkl);
+    *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
+
+    if debug_enabled() {
+        log_debug(&format!(
+            "startup layout initialized hwnd=0x{:X} class='{}' title='{}' hkl=0x{:X} lang={}",
+            hwnd,
+            class_name,
+            title,
+            hkl as usize,
+            get_layout_name(hkl)
+        ));
+    }
+}
+
 fn main() {
     let folder_path = r"D:\Dev\KeyMemorizer";
     fs::create_dir_all(folder_path).expect("Could not create folder");
@@ -219,6 +239,7 @@ fn main() {
     
     // Print installed keyboard layouts for diagnostic
     print_installed_layouts();
+    initialize_layout_state();
 
     // Track modifier key states
     let shift_pressed = Arc::new(AtomicBool::new(false));
@@ -306,17 +327,23 @@ fn main() {
                         }
                     }
 
+                    let ctrl_pressed = ctrl_clone.load(Ordering::SeqCst);
+                    let alt_pressed = alt_clone.load(Ordering::SeqCst);
+                    let win_pressed = win_clone.load(Ordering::SeqCst);
+
+                    if ctrl_pressed || alt_pressed || win_pressed {
+                        if win_pressed && key == Key::Space {
+                            mark_layout_switch();
+                        }
+                        return;
+                    }
+
                     // Handle special keys that don't produce characters
                     match key {
                         Key::Return => {
                             log_char("\n");
                         }
                         Key::Space => {
-                            // Win+Space is a layout switch hotkey: don't log a space for it.
-                            if win_clone.load(Ordering::SeqCst) {
-                                mark_layout_switch();
-                                return;
-                            }
                             log_char(" ");
                         }
                         Key::Backspace => {
@@ -799,6 +826,48 @@ fn key_to_vk(key: &Key) -> Option<i32> {
 
 fn log_char(text: &str) {
     let path = r"D:\Dev\KeyMemorizer\ai_history.log";
+
+    match text {
+        "[BACKSPACE]" => {
+            remove_last_logged_char(path);
+            return;
+        }
+        "[TAB]" => append_logged_text(path, "\t"),
+        _ if should_ignore_logged_token(text) => return,
+        _ => append_logged_text(path, text),
+    }
+}
+
+fn should_ignore_logged_token(text: &str) -> bool {
+    matches!(
+        text,
+        "[ESC]"
+            | "[LeftArrow]"
+            | "[RightArrow]"
+            | "[UpArrow]"
+            | "[DownArrow]"
+            | "[Home]"
+            | "[End]"
+            | "[Delete]"
+            | "[Insert]"
+            | "[PageUp]"
+            | "[PageDown]"
+            | "[F1]"
+            | "[F2]"
+            | "[F3]"
+            | "[F4]"
+            | "[F5]"
+            | "[F6]"
+            | "[F7]"
+            | "[F8]"
+            | "[F9]"
+            | "[F10]"
+            | "[F11]"
+            | "[F12]"
+    ) || text.starts_with("[Unknown(")
+}
+
+fn append_logged_text(path: &str, text: &str) {
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -807,6 +876,47 @@ fn log_char(text: &str) {
 
     write!(file, "{}", text).ok();
     file.flush().ok();
-    
+
     // Removed console output to prevent console from stealing focus
+}
+
+fn remove_last_logged_char(path: &str) {
+    let mut file = match OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(_) => return,
+    };
+
+    let len = match file.metadata() {
+        Ok(metadata) => metadata.len(),
+        Err(_) => return,
+    };
+
+    if len == 0 {
+        return;
+    }
+
+    let tail_len = len.min(4) as usize;
+    if file.seek(SeekFrom::End(-(tail_len as i64))).is_err() {
+        return;
+    }
+
+    let mut tail = vec![0; tail_len];
+    if file.read_exact(&mut tail).is_err() {
+        return;
+    }
+
+    let char_start = tail
+        .iter()
+        .rposition(|byte| (byte & 0b1100_0000) != 0b1000_0000)
+        .unwrap_or(tail_len - 1);
+    let bytes_to_trim = (tail_len - char_start) as u64;
+
+    if file.set_len(len.saturating_sub(bytes_to_trim)).is_ok() {
+        file.flush().ok();
+    }
 }
