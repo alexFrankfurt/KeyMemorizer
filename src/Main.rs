@@ -76,6 +76,7 @@ static FALLBACK_CYRILLIC_HKL: OnceLock<usize> = OnceLock::new();
 static FORCE_CYRILLIC_HKL: OnceLock<Mutex<Option<usize>>> = OnceLock::new();
 static EXPECTED_LANG: OnceLock<Mutex<u16>> = OnceLock::new();
 static HISTORY_FOLDER: OnceLock<String> = OnceLock::new();
+static ENGLISH_STREAK: OnceLock<Mutex<u32>> = OnceLock::new();
 
 fn get_expected_lang() -> u16 {
     *EXPECTED_LANG
@@ -98,6 +99,7 @@ fn sync_layout_from_foreground() {
     let lang_id = LOWORD(hkl as usize as DWORD) as u16;
     set_expected_lang(lang_id);
     *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
+    *ENGLISH_STREAK.get_or_init(|| Mutex::new(0)).lock().unwrap() = 0;
     log_debug(&format!(
         "Win+Space synced layout to 0x{:04X} ({})",
         lang_id,
@@ -125,6 +127,8 @@ fn mark_layout_switch() {
         set_expected_lang(0x0409);
         *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
     }
+    // Explicit switch resets the English-detection streak
+    *ENGLISH_STREAK.get_or_init(|| Mutex::new(0)).lock().unwrap() = 0;
 
     log_debug(&format!(
         "layout switch hotkey detected (expected_lang=0x{:04X})",
@@ -143,12 +147,26 @@ fn update_last_cyrillic_hkl(hkl: HKL) {
 
 fn maybe_confirm_expected_lang(lang_id: u16) {
     // If Windows reports a non-English HKL for the foreground window, treat it as authoritative.
-    // Also, if we are in English, never keep a forced Cyrillic HKL.
+    // If English is reported but we expect Cyrillic, count consecutive English keypresses —
+    // after 3 we accept that the user really switched back (vs. a transient race condition).
     if lang_id != 0x0409 {
         set_expected_lang(lang_id);
         *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
+        *ENGLISH_STREAK.get_or_init(|| Mutex::new(0)).lock().unwrap() = 0;
     } else if get_expected_lang() == 0x0409 {
         *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
+        *ENGLISH_STREAK.get_or_init(|| Mutex::new(0)).lock().unwrap() = 0;
+    } else {
+        // English reported but we expect non-English: race condition or real switch.
+        let streak = ENGLISH_STREAK.get_or_init(|| Mutex::new(0));
+        let mut s = streak.lock().unwrap();
+        *s += 1;
+        if *s >= 5 {
+            set_expected_lang(0x0409);
+            *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
+            *s = 0;
+            log_debug("accepted English switch after streak");
+        }
     }
 }
 
@@ -424,6 +442,8 @@ fn main() {
                                                         get_layout_name(forced_hkl)
                                                     ));
                                                     log_char(&fixed);
+                                                    // Successful fix resets the English streak
+                                                    *ENGLISH_STREAK.get_or_init(|| Mutex::new(0)).lock().unwrap() = 0;
                                                     return;
                                                 }
                                             }
@@ -479,6 +499,8 @@ fn main() {
                                                         get_layout_name(alt_hkl)
                                                     ));
                                                     log_char(&fixed);
+                                                    // Successful fix resets the English streak
+                                                    *ENGLISH_STREAK.get_or_init(|| Mutex::new(0)).lock().unwrap() = 0;
                                                     return;
                                                 }
                                             }
