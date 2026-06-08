@@ -10,15 +10,23 @@ use std::thread;
 use winapi::shared::minwindef::{DWORD, HKL, LOWORD};
 use winapi::um::processthreadsapi::GetCurrentThreadId;
 use winapi::um::winuser::{
-    ActivateKeyboardLayout, AttachThreadInput, GetAsyncKeyState, GetClassNameW,
-    GetForegroundWindowWindowWindow, GetKeyboardLayout, GetKeyboardLayoutList, GetKe
-   yboardState, GetWindowTextW, GetWindowThreadProcessId, MapVirtualKeyExW, ToUnicodeEx, MAPVK_VK_TO_VSC,
+    ActivateKeyboardLayout, AttachThreadInput, GetAsyncKeyState, GetForegroundWindow,
+    GetClassNameW, GetKeyboardLayout, GetKeyboardLayoutList, GetKeyboardState, GetWindowTextW,
+    GetWindowThreadProcessId, MapVirtualKeyExW, ToUnicodeEx, MAPVK_VK_TO_VSC,
 };
+
+fn history_folder() -> &'static str {
+    HISTORY_FOLDER
+        .get()
+        .map(|s| s.as_str())
+        .unwrap_or(r"D:\Dev\KeyMemorizer")
+}
 
 fn debug_enabled() -> bool {
     // Off by default. Enable via env var (KEYMEM_DEBUG=1/true) or by creating:
-    // D:\Dev\KeyMemorizer\debug.enabled
-    if fs::metadata(r"D:\Dev\KeyMemorizer\debug.enabled").is_ok() {
+    // <history_folder>\debug.enabled
+    let debug_file = format!("{}\\debug.enabled", history_folder());
+    if fs::metadata(&debug_file).is_ok() {
         return true;
     }
 
@@ -37,7 +45,8 @@ fn debug_verbose() -> bool {
 
     // Optional: create an empty file to enable per-key debug spam.
     // Default is non-verbose to avoid interfering with focus/typing.
-    fs::metadata(r"D:\Dev\KeyMemorizer\debug.verbose").is_ok()
+    let verbose_file = format!("{}\\debug.verbose", history_folder());
+    fs::metadata(&verbose_file).is_ok()
 }
 
 fn contains_cyrillic(s: &str) -> bool {
@@ -66,6 +75,7 @@ static LAST_CYRILLIC_HKL: OnceLock<Mutex<usize>> = OnceLock::new();
 static FALLBACK_CYRILLIC_HKL: OnceLock<usize> = OnceLock::new();
 static FORCE_CYRILLIC_HKL: OnceLock<Mutex<Option<usize>>> = OnceLock::new();
 static EXPECTED_LANG: OnceLock<Mutex<u16>> = OnceLock::new();
+static HISTORY_FOLDER: OnceLock<String> = OnceLock::new();
 
 fn get_expected_lang() -> u16 {
     *EXPECTED_LANG
@@ -95,29 +105,11 @@ fn mark_layout_switch() {
             set_expected_lang(0x0409);
         }
         // We'll force Cyrillic only if we detect the race.
-        *FORCE_CYRILLIC_HKL
-            
-            .lock()
-            
-
-            .lock()
-
-            .get_or_init(||
-             Mutex::new(None))
-            .lock()
-            
-            .lock()
-            .unwrap() = None;
+        *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
     } else {
-
-            .lock()
-
         // Switch back to English
         set_expected_lang(0x0409);
-        *FORCE_CYRILLIC_HKL
-            .get_or_init(|| Mutex::new(None))
-            .lock()
-            .unwrap() = None;
+        *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
     }
 
     log_debug(&format!(
@@ -128,45 +120,21 @@ fn mark_layout_switch() {
 
 fn update_last_cyrillic_hkl(hkl: HKL) {
     let lang_id = LOWORD(hkl as usize as DWORD) as u16;
-    if !is_cyrillic_layout(
-            lang_id) {
-            .lock()
-            
+    if !is_cyrillic_layout(lang_id) {
         return;
     }
-            
-            .lock()
-            
     let lock = LAST_CYRILLIC_HKL.get_or_init(|| Mutex::new(0));
     *lock.lock().unwrap() = hkl as usize;
 }
 
-
-            .lock()
-
 fn maybe_confirm_expected_lang(lang_id: u16) {
-    // If Windows reports a
-             non-Englis
-        h HKL for the foregrou
-        .lock()
-        
-            .lock()
-            ow, treat it as authoritative.
+    // If Windows reports a non-English HKL for the foreground window, treat it as authoritative.
     // Also, if we are in English, never keep a forced Cyrillic HKL.
     if lang_id != 0x0409 {
         set_expected_lang(lang_id);
-        *FORCE_CYRILLIC_HKL
-            .get_or_init(|| Mutex::new(None))
-            .lock()
-            .unwrap() = None;
+        *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
     } else if get_expected_lang() == 0x0409 {
-        *FORCE_CYRILLIC_HKL
-            .get_or_ini
-        t(|| Mutex::new(None))
-        .lock()
-
-            .lock()
-            .unwrap() = None;
+        *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
     }
 }
 
@@ -176,15 +144,8 @@ fn get_forced_cyrillic_hkl() -> Option<HKL> {
 }
 
 fn set_forced_cyrillic_hkl(hkl: HKL) {
-    *FORCE_CYRILLIC_HKL
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .unwrap() = Some(hkl as usize);
-    log_debug(&
-       forma
-   t!(
-       
-   
+    *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = Some(hkl as usize);
+    log_debug(&format!(
         "forcing Cyrillic HKL until OS confirms: 0x{:X} ({})",
         hkl as usize,
         get_layout_name(hkl)
@@ -192,13 +153,14 @@ fn set_forced_cyrillic_hkl(hkl: HKL) {
 }
 
 fn get_last_cyrillic_hkl() -> Option<HKL> {
-    let lock = LAST_CYRILLIC_HKL.get_or_init( v = *lock.lock().unwrap(); hwnd: 0, hkl: 0 })   Some(v as HKL)
+    let lock = LAST_CYRILLIC_HKL.get_or_init(|| Mutex::new(0));
+    let v = *lock.lock().unwrap();
+    if v == 0 {
+        fallback_cyrillic_hkl()
+    } else {
+        Some(v as HKL)
     }
 }
-
-
-
-
 
 fn fallback_cyrillic_hkl() -> Option<HKL> {
     let v = *FALLBACK_CYRILLIC_HKL.get_or_init(|| {
@@ -206,13 +168,14 @@ fn fallback_cyrillic_hkl() -> Option<HKL> {
         // fallback even if we haven't yet observed a Cyrillic HKL in the foreground.
         let layouts = get_installed_keyboard_layouts();
         for hkl in layouts {
-            let lang_id = LOWORD(hkl as usize     if is_cyrillic_layout(la hwnd: 0, hkl: 0 })   0usize
+            let lang_id = LOWORD(hkl as usize as DWORD) as u16;
+            if is_cyrillic_layout(lang_id) {
+                return hkl as usize;
+            }
+        }
+        0usize
     });
-    if v == 0 {
-        None
-    } else {
-        Some(v as HKL)
-    }
+    if v == 0 { None } else { Some(v as HKL) }
 }
 
 fn maybe_log_foreground_change(hwnd: usize, hkl: HKL, title: &str, class_name: &str) {
@@ -220,11 +183,13 @@ fn maybe_log_foreground_change(hwnd: usize, hkl: HKL, title: &str, class_name: &
         return;
     }
 
-    let last = LAST_FOREGROUND.get_or_init(|| Mutex::new(ForegroundState { hwnd: 0, hkl: 0 }));
+    let last = LAST_FOREGROUND.get_or_init(|| {
+        Mutex::new(ForegroundState {
+            hwnd: 0,
+            hkl: 0,
+        })
+    });
 
-        
-        .lock()
-        
     let mut guard = last.lock().unwrap();
     let hkl_usize = hkl as usize;
     if guard.hwnd != hwnd || guard.hkl != hkl_usize {
@@ -239,9 +204,6 @@ fn maybe_log_foreground_change(hwnd: usize, hkl: HKL, title: &str, class_name: &
             "FOREGROUND hwnd=0x{:X} class='{}' title='{}' hkl=0x{:X} lang={}",
             hwnd,
             class_name,
-
-        .lock()
-
             title,
             hkl_usize,
             get_layout_name(hkl)
@@ -253,14 +215,9 @@ fn initialize_layout_state() {
     let (hkl, hwnd, title, class_name) = unsafe { get_foreground_context() };
     let lang_id = LOWORD(hkl as usize as DWORD) as u16;
 
-        
-    );
-set_expected_lang(lang_id);
+    set_expected_lang(lang_id);
     update_last_cyrillic_hkl(hkl);
-    *FORCE_CYRILLIC_HKL
-        .get_or_init(|| Mutex::new(None))
-        .lock()
-        .unwrap() = None;
+    *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
 
     if debug_enabled() {
         log_debug(&format!(
@@ -272,45 +229,35 @@ set_expected_lang(lang_id);
             get_layout_name(hkl)
         ));
     }
-
-});
-
+}
 
 fn main() {
-    let folder_path = r"D:\Dev\KeyMemorizer";
-    fs::create_dir_all(folder_path).expect("Could not create folder");
+    let folder_path = env::args()
+        .nth(1)
+        .unwrap_or_else(|| r"D:\Dev\KeyMemorizer".to_string());
+    let _ = HISTORY_FOLDER.set(folder_path.clone());
+    fs::create_dir_all(&folder_path).expect("Could not create folder");
 
-                
-                hkl as usize,
-               
-            
     if debug_enabled() {
         eprintln!("[DEBUG] Enabled (console)");
         log_debug("KeyMemorizer started");
         if !debug_verbose() {
-            log_debug("Tip: create D:\\Dev\\KeyMemorizer\\debug.verbose for per-key debug");
+            log_debug(&format!("Tip: create {}\\debug.verbose for per-key debug", history_folder()));
         }
     }
 
-    println!("Monitoring started. Saving to D:\\Dev\\KeyMemorizer\\ai_history.log");
+    println!("Monitoring started. Saving to {}\\ai_history.log", history_folder());
     println!("Multi-language keyboard support enabled!");
-    println!(
-        "Switch keyboard layout (e.g., to Russian) and type - characters will be logged correctly."
-);
-
+    println!("Switch keyboard layout (e.g., to Russian) and type - characters will be logged correctly.");
+    
     // Print installed keyboard layouts for diagnostic
     print_installed_layouts();
     initialize_layout_state();
 
-    // Track modifier key state
-                s
-                hkl as usize,
-
-
+    // Track modifier key states
     let shift_pressed = Arc::new(AtomicBool::new(false));
     let alt_pressed = Arc::new(AtomicBool::new(false));
     let ctrl_pressed = Arc::new(AtomicBool::new(false));
-                           
     let win_pressed = Arc::new(AtomicBool::new(false));
     let caps_lock_on = Arc::new(AtomicBool::new(false));
 
@@ -326,15 +273,10 @@ fn main() {
 
     if debug_enabled() {
         if let Some(hkl) = fallback_cyrillic_hkl() {
-            log_debug(&format!(
-                "fallback Cyrillic HKL selected: 0x{:X} ({})",
-                hkl as usize,
-                get_layout_name(hkl)
-            ));
+            log_debug(&format!("fallback Cyrillic HKL selected: 0x{:X} ({})", hkl as usize, get_layout_name(hkl)));
         } else {
             log_debug("no fallback Cyrillic HKL found (RU/UA/BY not installed?)");
         }
-
     }
 
     // Start keyboard event listener
@@ -357,8 +299,7 @@ fn main() {
                             shift_clone.store(true, Ordering::SeqCst);
 
                             // Common Windows layout switch hotkeys include Alt+Shift and Ctrl+Shift.
-                            if alt_clone.load(Ordering::SeqCst) || ctrl_clone.load(Ordering::SeqCst)
-                            {
+                            if alt_clone.load(Ordering::SeqCst) || ctrl_clone.load(Ordering::SeqCst) {
                                 mark_layout_switch();
                             }
                             return;
@@ -381,23 +322,12 @@ fn main() {
                         Key::ControlLeft | Key::ControlRight => {
                             ctrl_clone.store(true, Ordering::SeqCst);
 
-                        | Key::F2
-                        | Key::F3
-                        | Key::F4
-                        | Key::F5
-                       
-                            // Ct
-                        | Key::F8
-                        | Key::F9
-                        | Key::F10
-                        | Key::F11
-                       
+                            // Ctrl+Shift (if Shift already down)
                             if shift_clone.load(Ordering::SeqCst) {
                                 mark_layout_switch();
                             }
                             return; // Don't log control keys
                         }
-                               
                         _ => {}
                     }
 
@@ -410,29 +340,18 @@ fn main() {
                         }
                     }
 
-                    let ctrl_pressed = ctrl_clone.load(O
-                                        && get_expected_lang() != 0x0409
-                                        && is_basic_latin_letter(name)
-                                   
+                    let ctrl_pressed = ctrl_clone.load(Ordering::SeqCst);
                     let alt_pressed = alt_clone.load(Ordering::SeqCst);
                     let win_pressed = win_clone.load(Ordering::SeqCst);
 
                     if ctrl_pressed || alt_pressed || win_pressed {
-                        if win_ is_shift, is_caps,
-                        | Key::F5
-
-                            mark_
-                        | Key::F8
-                        | Key::F9
-                        | Key::F10
-                        | Key::F11
-
+                        if win_pressed && key == Key::Space {
+                            mark_layout_switch();
                         }
                         return;
                     }
 
-                    // Handle special keys that don't produce ch
-                               aracters
+                    // Handle special keys that don't produce characters
                     match key {
                         Key::Return => {
                             log_char("\n");
@@ -440,90 +359,65 @@ fn main() {
                         Key::Space => {
                             log_char(" ");
                         }
-                                            &key, is_shift, is_caps, hkl,
-                                        
                         Key::Backspace => {
                             log_char("[BACKSPACE]");
                         }
                         Key::Tab => {
                             log_char("[TAB]");
                         }
-                                        && get_expected_lang() != 0x0409
-                                        && is_basic_latin_letter(name)
-
                         Key::Escape => {
                             log_char("[ESC]");
                         }
                         // Handle function keys F1-F12
-                        Key::F1 is_shift, is_caps,
-                        | Key::F5
-                        | Key::F6
-                        | Key::F7
-                        | Key::F8
-                        | Key::F9
-                        | Key::F10
-                        | Key::F11
-                                        && get_expected_lang() != 0x0409
-                                        && is_basic_latin_letter(name)
-                                   
-                        | Key::F12 => {
+                        Key::F1 | Key::F2 | Key::F3 | Key::F4 | Key::F5 | Key::F6 
+                        | Key::F7 | Key::F8 | Key::F9 | Key::F10 | Key::F11 | Key::F12 => {
                             log_char(&format!("[{:?}]", key));
                         }
                         _ => {
-                            // Get active HKL once pe is_shift, is_caps,D(hkl as usize as DWORD) as u16;
+                            // Get active HKL once per keypress.
+                            let (hkl, hwnd, title, class_name) = unsafe { get_foreground_context() };
+                            let lang_id = LOWORD(hkl as usize as DWORD) as u16;
 
                             maybe_confirm_expected_lang(lang_id);
 
                             maybe_log_foreground_change(hwnd, hkl, &title, &class_name);
 
-                                                        alt_hkl as usize as DWORD,
-                                                    )
-                                                       
-                            // Prefer OS-provided character from rdev, but override it when it
-                                            &key, is_shift, is_caps, hkl,
-
+                            // Prefer OS-provided character from rdev, but override it when it looks
                             // inconsistent with the current layout (e.g., Russian HKL but Latin letters).
                             if let Some(name) = event.name.as_ref() {
                                 if !name.is_empty() && !name.chars().any(|c| c.is_control()) {
                                     // If we already established that Cyrillic is intended but Windows still
                                     // reports English for the focused window, keep using the forced HKL.
-                                    if lang_id == 0x0409
-                                        && get_expected_lang() != 0x0409
-                                        && is_basic_latin_letter(name)
-                                    {
+                                    if lang_id == 0x0409 && get_expected_lang() != 0x0409 && is_basic_latin_letter(name) {
                                         if let Some(forced_hkl) = get_forced_cyrillic_hkl() {
                                             let is_shift = shift_clone.load(Ordering::SeqCst);
                                             let is_caps = caps_clone.load(Ordering::SeqCst);
                                             if let Some(fixed) = get_char_from_key_layout_with_hkl(
-                                                &key, is_shift, is_caps, forced_hkl,
+                                                &key,
+                                                is_shift,
+                                                is_caps,
+                                                forced_hkl,
                                             ) {
                                                 if !fixed.is_empty() && contains_cyrillic(&fixed) {
                                                     log_debug(&format!(
                                                         "forced-fix '{}' -> '{}' key={:?} forced_lang={}",
                                                         name,
                                                         fixed,
-
-                                        && get_expected_lang() != 0x0409
-                                        && is_basic_latin_letter(name)
-
+                                                        key,
                                                         get_layout_name(forced_hkl)
                                                     ));
                                                     log_char(&fixed);
                                                     return;
-                                                } is_shift, is_caps,
+                                                }
+                                            }
+                                        }
+                                    }
 
-if let Some(char_result) =
-                               e = should_override_rdev_name(lang_id, name);
-                           
+                                    let should_override = should_override_rdev_name(lang_id, name);
                                     if should_override {
                                         let is_shift = shift_clone.load(Ordering::SeqCst);
-                                        let is_caps = caps_clone.load(Orderin
-                                                        alt_hkl as usize as DWORD,
-                                                    )
-
-                                        if let Some(fixed) = get_char_from_key_layout_with_hkl(
-                                            &key, is_shift, is_caps, hkl,
-                                        ) {
+                                        let is_caps = caps_clone.load(Ordering::SeqCst);
+                                        if let Some(fixed) = get_char_from_key_layout_with_hkl(&key, is_shift, is_caps, hkl) {
                                             if !fixed.is_empty() {
                                                 if contains_cyrillic(&fixed) {
                                                     update_last_cyrillic_hkl(hkl);
@@ -535,32 +429,29 @@ if let Some(char_result) =
                                                     key,
                                                     get_layout_name(hkl)
                                                 ));
-                                                                          return;
+                                                log_char(&fixed);
+                                                return;
+                                            }
                                         }
                                     }
-                                }
 
-                                // Race fix: when switching EN->Cyrillic while staying focused in the same
-                    }
-                                // Cyrillic, try a Cyrillic HKL and, on success, force it until OS confirms.
-                                if lang_id == 0x0409
-                                    && get_expected_lang() != 0x0409
-                    }
-                                {
-                                    if let Some(alt_hkl) = get_last_cyrillic_hkl() {
-                                        let is_shift = shift_clone.load(Ordering::SeqCst);
-                                        let is_caps = caps_clone.load(Ordering::SeqCst);
-                 ,                               &key, is_shift, is_caps, alt_hkl,
-
-                            if let Some(char_result) =                ) {
-                               xed.is_empty() && contains_cyrillic(&fixed) {
-
+                                    // Race fix: when switching EN->Cyrillic while staying focused in the same
+                                    // window, Windows may keep reporting English for a bit. If we *expect*
+                                    // Cyrillic, try a Cyrillic HKL and, on success, force it until OS confirms.
+                                    if lang_id == 0x0409 && get_expected_lang() != 0x0409 && is_basic_latin_letter(name) {
+                                        if let Some(alt_hkl) = get_last_cyrillic_hkl() {
+                                            let is_shift = shift_clone.load(Ordering::SeqCst);
+                                            let is_caps = caps_clone.load(Ordering::SeqCst);
+                                            if let Some(fixed) = get_char_from_key_layout_with_hkl(
+                                                &key,
+                                                is_shift,
+                                                is_caps,
+                                                alt_hkl,
+                                            ) {
+                                                if !fixed.is_empty() && contains_cyrillic(&fixed) {
                                                     update_last_cyrillic_hkl(alt_hkl);
                                                     // Confirm that we're now in Cyrillic mode.
-                                                    set_expected_lang(LOWORD(
-                                                        alt_hkl as usize as DWORD,
-                                                    )
-                                                        as u16);
+                                                    set_expected_lang(LOWORD(alt_hkl as usize as DWORD) as u16);
                                                     set_forced_cyrillic_hkl(alt_hkl);
                                                     log_debug(&format!(
                                                         "race-fix '{}' -> '{}' key={:?} current_lang={} alt_lang={}",
@@ -576,25 +467,25 @@ if let Some(char_result) =
                                             }
                                         }
                                     }
-                                if debug_verbose() {
-                                    log_debug(&format!(
-                                        "rdev.name='{}' key={:?} lang={}",
-                                        name,
-                                        key,
-                    }
-                                    ));
+
+                                    if debug_verbose() {
+                                        log_debug(&format!(
+                                            "rdev.name='{}' key={:?} lang={}",
+                                            name,
+                                            key,
+                                            get_layout_name(hkl)
+                                        ));
+                                    }
+                                    log_char(name);
+                                    return;
                                 }
-                                log_char(name);
-            }
                             }
-                        }
 
-                        // Fallback: translate using Windows API for proper layout support
-                 ,           let is_caps = caps_clone.load(Ordering::SeqCst);
-
-ome(char_result) =
-                                get_char_from_key_layout_with_hkl(&key, is_shift, is_caps, hkl)
-                            {
+                            // Fallback: translate using Windows API for proper layout support
+                            let is_shift = shift_clone.load(Ordering::SeqCst);
+                            let is_caps = caps_clone.load(Ordering::SeqCst);
+                            
+                            if let Some(char_result) = get_char_from_key_layout_with_hkl(&key, is_shift, is_caps, hkl) {
                                 if !char_result.is_empty() {
                                     log_char(&char_result);
                                 }
@@ -606,41 +497,35 @@ ome(char_result) =
                                         key_name.to_uppercase()
                                     } else {
                                         key_name.to_lowercase()
-                            };
+                                    };
                                     log_char(&char_to_log);
                                 } else {
-                            log_char(&format!("[{}]", key_name));
-                  
-                          }
-           
-        
+                                    log_char(&format!("[{}]", key_name));
+                                }
                             }
                         }
                     }
                 }
-                
-                Ev
-                hkl as usize,
-                lang_id,
-               ) => match key {
-            
-                    Key::Unknown(0x5B) | Key::Unknown(0x5C) => {
-                        win_clone.store(false, Ordering::SeqCst);
+                EventType::KeyRelease(key) => {
+                    match key {
+                        Key::Unknown(0x5B) | Key::Unknown(0x5C) => {
+                            win_clone.store(false, Ordering::SeqCst);
+                        }
+                        Key::ShiftLeft | Key::ShiftRight => {
+                            shift_clone.store(false, Ordering::SeqCst);
+                        }
+                        Key::Alt => {
+                            alt_clone.store(false, Ordering::SeqCst);
+                            alt_tab_clone.store(false, Ordering::SeqCst);
+                        }
+                        Key::ControlLeft | Key::ControlRight => {
+                            ctrl_clone.store(false, Ordering::SeqCst);
+                        }
+                        _ => {}
                     }
-                    Key::ShiftLeft | Key::ShiftRight => {
-                        shift_clone.store(false, Ordering::SeqCst);
-                    }
-                    Key::Alt => {
-                        alt_clone.store(false, Ordering::SeqCst);
-                        alt_tab_clone.store(false, Ordering::SeqCst);
-        }
-                    Key::ControlLeft | Key::ControlRight => {
-                        ctrl_clone.store(false, Ordering::SeqCst);
-            }
-                    _ => {}
-                },
+                }
                 _ => {}
-    }
+            }
         };
 
         if let Err(e) = rdev::listen(callback) {
@@ -650,27 +535,19 @@ ome(char_result) =
 
     // Keep main thread alive
     loop {
-    thread::sleep(std::time::Duration::from_secs(1));
+        thread::sleep(std::time::Duration::from_secs(1));
     }
 }
 
-the system-wide current keyboard layout
+/// Get the system-wide current keyboard layout
 /// Returns the HKL (Handle to Keyboard Layout) for the system
 #[allow(dead_code)]
-ystem_keyboard_layout() -> HKL {
+fn get_system_keyboard_layout() -> HKL {
     unsafe {
-
-
-
         // ActivateKeyboardLayout with 0 returns the current system layout without changing it
         ActivateKeyboardLayout(std::ptr::null_mut(), 0)
     }
 }
-
-
-                hkl as usize,
-                lang_id,
-
 
 /// Get all installed keyboard layouts for the system
 #[allow(dead_code)]
@@ -681,14 +558,14 @@ fn get_installed_keyboard_layouts() -> Vec<HKL> {
         if count == 0 {
             return Vec::new();
         }
-
+        
         let mut layouts: Vec<HKL> = vec![0 as HKL; count as usize];
         let actual_count = GetKeyboardLayoutList(count, layouts.as_mut_ptr());
-
+        
         if actual_count == 0 {
             return Vec::new();
         }
-
+        
         layouts.truncate(actual_count as usize);
         layouts
     }
@@ -698,34 +575,21 @@ fn get_installed_keyboard_layouts() -> Vec<HKL> {
 fn print_installed_layouts() {
     unsafe {
         let count = GetKeyboardLayoutList(0, std::ptr::null_mut());
-    if count == 0 {
+        if count == 0 {
             eprintln!("[DIAGNOSTIC] No keyboard layouts found!");
             return;
         }
-
+        
         let mut layouts: Vec<HKL> = vec![0 as HKL; count as usize];
         let actual_count = GetKeyboardLayoutList(count, layouts.as_mut_ptr());
-
-        eprintln!(
-            "[DIAGNOSTIC] Installed keyboard layouts ({}):",
-            actual_count
-        );
+        
+        eprintln!("[DIAGNOSTIC] Installed keyboard layouts ({}):", actual_count);
         for i in 0..actual_count as usize {
             let hkl = layouts[i];
             let lang_id = LOWORD(hkl as usize as DWORD);
-            eprintln!(
-                "  HKL[{}] = 0x{:08X}, LANGID: 0x{:04X} ({})",
-                i,
-                hkl as usize,
-                lang_id,
-                get_layout_name(hkl)
-            );
+            eprintln!("  HKL[{}] = 0x{:08X}, LANGID: 0x{:04X} ({})", 
+                i, hkl as usize, lang_id, get_layout_name(hkl));
         }
-    
-   
-   
-   ,
-
     }
 }
 
@@ -734,16 +598,8 @@ fn print_installed_layouts() {
 fn get_layout_name(hkl: HKL) -> String {
     // HKL is a pointer, we need to cast it to get the language ID
     let lang_id = LOWORD(hkl as usize as u32) as u16;
-
-            0x80
-        } else {
-           
-       
+    
     // Common language IDs
-            0x01
-        } else {
-           
-       
     let lang_name = match lang_id {
         0x0409 => "English (US)",
         0x0419 => "Russian",
@@ -752,14 +608,14 @@ fn get_layout_name(hkl: HKL) -> String {
         0x0410 => "Italian",
         0x040A => "Spanish",
         0x0415 => "Polish",
-0x041F => "Turkish",
+        0x041F => "Turkish",
         0x041A => "Croatian/Serbian",
         0x0424 => "Slovenian",
         0x0422 => "Ukrainian",
         0x0423 => "Belarusian",
         _ => "Unknown",
     };
-
+    
     format!("{} (0x{:04X})", lang_name, lang_id)
 }
 
@@ -768,10 +624,10 @@ fn is_cyrillic_layout(lang_id: u16) -> bool {
 }
 
 fn is_basic_latin_letter(s: &str) -> bool {
-ost common failure mode here is "ghbdtn" (latin letters) while Russian is active.
+    // Most common failure mode here is "ghbdtn" (latin letters) while Russian is active.
     // Keep the heuristic tight to avoid overriding valid symbols.
     s.chars().all(|c| c.is_ascii_alphabetic())
-
+}
 
 fn should_override_rdev_name(lang_id: u16, name: &str) -> bool {
     is_cyrillic_layout(lang_id) && is_basic_latin_letter(name)
@@ -781,34 +637,18 @@ fn should_override_rdev_name(lang_id: u16, name: &str) -> bool {
 unsafe fn get_foreground_hkl() -> HKL {
     let hwnd = GetForegroundWindow();
     if !hwnd.is_null() {
-        let foreground_tid = GetWindo
-    wThreadPro
-d(hwnd, std
-   ::ptr::null_mut
-   ());,
-
+        let foreground_tid = GetWindowThreadProcessId(hwnd, std::ptr::null_mut());
         if foreground_tid != 0 {
             let current_tid = GetCurrentThreadId();
             if AttachThreadInput(current_tid, foreground_tid, 1) != 0 {
                 let attached_hkl = GetKeyboardLayout(0);
                 AttachThreadInput(current_tid, foreground_tid, 0);
-                return attached
-                _hkl;
-               
-            ));
-}
+                return attached_hkl;
+            }
             return GetKeyboardLayout(foreground_tid);
         }
-            0x80
-        } else {
-
-
     }
-            0x01
-        } else {
-
-
-GetKeyboardLayout(0)
+    GetKeyboardLayout(0)
 }
 
 unsafe fn get_foreground_window_text(hwnd: *mut winapi::shared::windef::HWND__) -> String {
@@ -816,7 +656,7 @@ unsafe fn get_foreground_window_text(hwnd: *mut winapi::shared::windef::HWND__) 
     let mut buf: [u16; 512] = [0; 512];
     let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
     if len > 0 {
-String::from_utf16_lossy(&buf[..len as usize])
+        String::from_utf16_lossy(&buf[..len as usize])
     } else {
         String::new()
     }
@@ -832,46 +672,30 @@ unsafe fn get_foreground_class_name(hwnd: *mut winapi::shared::windef::HWND__) -
     }
 }
 
-rns (hkl, hwnd_usize, title, class_name)
+/// Returns (hkl, hwnd_usize, title, class_name)
 unsafe fn get_foreground_context() -> (HKL, usize, String, String) {
     let hwnd = GetForegroundWindow();
-wnd.is_null() {
+    if hwnd.is_null() {
         return (GetKeyboardLayout(0), 0, String::new(), String::new());
     }
 
     let title = get_foreground_window_text(hwnd);
     let class_name = get_foreground_class_name(hwnd);
     (get_foreground_hkl(), hwnd as usize, title, class_name)
-
+}
 
 /// Get character from key using Windows API for proper keyboard layout support
-fn get_char_from_key_layout_with_hkl(
-    key: &Key,
-hift: bool,
-    is_caps: bool,
-    hkl: HKL,
-) -> Option<String> {
+fn get_char_from_key_layout_with_hkl(key: &Key, is_shift: bool, is_caps: bool, hkl: HKL) -> Option<String> {
     let vk_code = key_to_vk(key)?;
 
     unsafe {
-// Get full keyboard state from OS (more reliable than synthesizing only modifiers)
+        // Get full keyboard state from OS (more reliable than synthesizing only modifiers)
         let mut keyboard_state: [u8; 256] = [0; 256];
-        let got_state = GetKeyb
-                oardState(keyboard_state.as_mut
-               _ptr());
-));
+        let got_state = GetKeyboardState(keyboard_state.as_mut_ptr());
 
-// Override with our tracked modifier intent
-        keyboard_state[0x10] = if is_shift {
-            0x80
-        } else {
-            keyboard_state[0x10] & 0x7F
-        }; // VK_SHIFT
-        keyboard_state[0x14] = if is_caps {
-            0x01
-        } else {
-            keyboard_state[0x14] & 0xFE
-        }; // VK_CAPITAL toggle
+        // Override with our tracked modifier intent
+        keyboard_state[0x10] = if is_shift { 0x80 } else { keyboard_state[0x10] & 0x7F }; // VK_SHIFT
+        keyboard_state[0x14] = if is_caps { 0x01 } else { keyboard_state[0x14] & 0xFE }; // VK_CAPITAL toggle
 
         // Keep Ctrl/Alt in sync via async state (AltGr often appears as Ctrl+Alt)
         if GetAsyncKeyState(0x11) != 0 {
@@ -880,7 +704,7 @@ hift: bool,
         if GetAsyncKeyState(0x12) != 0 {
             keyboard_state[0x12] |= 0x80; // VK_MENU (Alt)
         }
-
+        
         // Get scan code from virtual key using the active layout
         let scancode = MapVirtualKeyExW(vk_code as u32, MAPVK_VK_TO_VSC, hkl) as u32;
 
@@ -896,36 +720,33 @@ hift: bool,
             is_caps,
             got_state
         ));
-
+        
         // Buffer for Unicode characters
         let mut unicode_buf: [u16; 4] = [0; 4];
-
+        
         // Call ToUnicodeEx to get the actual character(s) from the key press
         // We use the HKL of the window where typing is happening
         let chars_written = ToUnicodeEx(
             vk_code as u32,
             scancode,
             keyboard_state.as_ptr(),
-    unicode_buf.as_mut_ptr(),
+            unicode_buf.as_mut_ptr(),
             unicode_buf.len() as i32,
             0,
             hkl,
         );
-
+        
         if chars_written > 0 {
             let mut result = String::new();
             for i in 0..chars_written as usize {
                 if let Some(c) = char::from_u32(unicode_buf[i] as u32) {
                     result.push(c);
                 }
-    }
+            }
 
-            log_debug(&format!(
-                "ToUnicodeEx wrote {} -> '{}'",
-                chars_written, result
-));
-
-    if !result.is_empty() && !result.chars().any(|c| c.is_control()) {
+            log_debug(&format!("ToUnicodeEx wrote {} -> '{}'", chars_written, result));
+            
+            if !result.is_empty() && !result.chars().any(|c| c.is_control()) {
                 return Some(result);
             }
         } else if chars_written < 0 {
@@ -936,7 +757,7 @@ hift: bool,
             log_debug("ToUnicodeEx wrote 0");
         }
     }
-
+    
     None
 }
 
@@ -970,7 +791,7 @@ fn key_to_vk(key: &Key) -> Option<i32> {
         Key::KeyX => Some(0x58),
         Key::KeyY => Some(0x59),
         Key::KeyZ => Some(0x5A),
-
+        
         // Numbers (top row)
         Key::Num1 => Some(0x31),
         Key::Num2 => Some(0x32),
@@ -982,14 +803,14 @@ fn key_to_vk(key: &Key) -> Option<i32> {
         Key::Num8 => Some(0x38),
         Key::Num9 => Some(0x39),
         Key::Num0 => Some(0x30),
-
+        
         // Special keys
         Key::Space => Some(0x20),
         Key::Return => Some(0x0D),
         Key::Backspace => Some(0x08),
         Key::Tab => Some(0x09),
         Key::Escape => Some(0x1B),
-
+        
         Key::Equal => Some(0xBB),
         Key::Minus => Some(0xBD),
         Key::LeftBracket => Some(0xDB),
@@ -1000,7 +821,7 @@ fn key_to_vk(key: &Key) -> Option<i32> {
         Key::BackSlash => Some(0xDC),
         Key::SemiColon => Some(0xBA),
         Key::BackQuote => Some(0xC0),
-
+        
         Key::Delete => Some(0x2E),
         Key::Insert => Some(0x2D),
         Key::Home => Some(0x24),
@@ -1017,16 +838,16 @@ fn key_to_vk(key: &Key) -> Option<i32> {
 }
 
 fn log_char(text: &str) {
-    let path = r"D:\Dev\KeyMemorizer\ai_history.log";
+    let path = format!("{}\\ai_history.log", history_folder());
 
     match text {
         "[BACKSPACE]" => {
-            remove_last_logged_char(path);
+            remove_last_logged_char(&path);
             return;
         }
-        "[TAB]" => append_logged_text(path, "\t"),
+        "[TAB]" => append_logged_text(&path, "\t"),
         _ if should_ignore_logged_token(text) => return,
-        _ => append_logged_text(path, text),
+        _ => append_logged_text(&path, text),
     }
 }
 
