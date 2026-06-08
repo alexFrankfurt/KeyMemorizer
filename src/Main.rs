@@ -91,6 +91,20 @@ fn set_expected_lang(lang_id: u16) {
         .unwrap() = lang_id;
 }
 
+fn sync_layout_from_foreground() {
+    // Query the actual foreground HKL and update expected_lang to match.
+    // Used for Win+Space which cycles through all layouts, not just EN↔RU.
+    let (hkl, _hwnd, _title, _class) = unsafe { get_foreground_context() };
+    let lang_id = LOWORD(hkl as usize as DWORD) as u16;
+    set_expected_lang(lang_id);
+    *FORCE_CYRILLIC_HKL.get_or_init(|| Mutex::new(None)).lock().unwrap() = None;
+    log_debug(&format!(
+        "Win+Space synced layout to 0x{:04X} ({})",
+        lang_id,
+        get_layout_name(hkl)
+    ));
+}
+
 fn mark_layout_switch() {
     // Treat the layout switch hotkey as a toggle between English and a Cyrillic layout.
     // This matches user expectation and fixes the "second switch stays Russian" issue.
@@ -346,7 +360,10 @@ fn main() {
 
                     if ctrl_pressed || alt_pressed || win_pressed {
                         if win_pressed && key == Key::Space {
-                            mark_layout_switch();
+                            // Win+Space cycles through all installed layouts — the user
+                            // may land on any layout or return to the same one. Sync to
+                            // reality instead of blindly toggling.
+                            sync_layout_from_foreground();
                         }
                         return;
                     }
