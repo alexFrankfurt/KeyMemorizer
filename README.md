@@ -1,6 +1,6 @@
 # KeyMemorizer
 
-A Windows keyboard input logger with full multi-language layout support. Captures all typed characters — including non-Latin scripts like Cyrillic — by querying the active keyboard layout via the Windows API.
+A Windows keyboard input logger with full multi-language layout support. Captures Cyrillic and English typed characters  — by querying the active keyboard layout via the Windows API.
 
 ## Features
 
